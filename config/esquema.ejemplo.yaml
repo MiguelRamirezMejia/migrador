@@ -1,0 +1,225 @@
+# =====================================================================
+# Esquema de EJEMPLO: empresa de servicios por suscripcion.
+#
+# Describe dos cosas:
+#   plantilla -> como viene el Excel (hojas, fila de encabezado y
+#                nombres de columna aceptados para cada campo).
+#   tablas    -> como se llama cada cosa en la base de datos destino.
+#
+# Para usar el migrador con tu propio sistema, copia este archivo a
+# privado/esquema.yaml (carpeta ignorada por git) y ajusta los nombres.
+# Ver la seccion "Adaptarlo a tu sistema" del README.
+# =====================================================================
+nombre: "Ejemplo - servicios por suscripcion"
+
+# Textos que aparecen en los mensajes de la interfaz.
+etiquetas:
+  codigo_servicio: "codigo de servicio"
+  catalogo_ciudades: "catalogo de ciudades"
+
+plantilla:
+  # Si una fila a mitad de hoja contiene alguno de estos textos, se
+  # trata como un encabezado repetido y se ignora.
+  marcadores_encabezado: ["tipo_identificacion", "codigo_servicio", "contrato"]
+
+  hojas:
+    # Para cada hoja: nombre exacto en el Excel, fila del encabezado
+    # (1 = primera fila) y, si difieren del campo logico, los nombres de
+    # columna aceptados (texto o lista de alternativas).
+    tipos_contrato:
+      nombre: "TIPOS DE SERVICIO"
+      fila_encabezado: 1
+      columnas:
+        identificador: "codigo"
+
+    categorias:
+      nombre: "CATEGORIAS"
+      fila_encabezado: 1
+
+    productos:
+      nombre: "PRODUCTOS"
+      fila_encabezado: 1
+      columnas:
+        tiene_seriales: "maneja_seriales"
+        se_puede_vender: "se_vende"
+        se_puede_comprar: "se_compra"
+        precio_venta: "precio"
+
+    productos_por_plan:
+      nombre: "PRODUCTOS POR PLAN"
+      fila_encabezado: 1
+      columnas:
+        principal: "producto principal"
+        complemento: "complemento"
+
+    consecutivos_proyectos:
+      nombre: "SEDES"
+      fila_encabezado: 1
+      columnas:
+        proyecto: "sede"
+        numero_de_digitos: "digitos"
+
+    personas:
+      nombre: "PERSONAS"
+      fila_encabezado: 2          # la fila 1 agrupa las columnas en CLIENTE / EMPLEADO
+      columnas:
+        numero_documento: ["documento", "numero_documento"]
+        termino_pago: "plazo_pago"
+        tipo_regimen: "regimen"
+
+    contratos:
+      nombre: "CONTRATOS"
+      fila_encabezado: 1
+      columnas:
+        consecutivo_contrato: "numero_contrato"
+        proyecto: "sede"
+        tipo_contrato: "tipo_servicio"
+        ciudad_servicio: "ciudad"
+        factura_electronica: "facturacion"
+        direccion_servicio: "direccion"
+
+    productos_contratos:
+      nombre: "DETALLE CONTRATOS"
+      fila_encabezado: 1
+      columnas:
+        precio_venta: "precio"
+        id_contrato: "contrato"
+
+reglas:
+  personas:
+    cliente:
+      # Una persona es cliente si trae alguno de estos campos...
+      se_detecta_por: [termino_pago, tipo_regimen]
+      # ...y en ese caso estos son obligatorios.
+      obligatorios: [email, termino_pago]
+    empleado:
+      # Si un empleado no trae almacen, se le crea uno propio con las
+      # ubicaciones de tablas.ubicacion.filas.
+      bodega_automatica: true
+
+  contratos:
+    obligatorios: [cliente, proyecto, tipo_contrato, direccion_servicio, dia_corte]
+    # Columna de texto libre que se convierte en booleano por palabras clave.
+    factura_electronica:
+      falso_si_contiene: ["CUENTA", "COBRO"]
+      verdadero_si_contiene: ["ELECTR"]
+    # Si una sede es ambigua (varias sedes en la misma ciudad), se intenta
+    # resolver por palabras del tipo de servicio que tambien esten en el
+    # nombre de la sede.
+    desambiguar_proyecto_por_palabras:
+      - ["FIBRA", "FTTH"]
+      - ["RADIO", "INALAMBRICO"]
+
+tablas:
+  # Para cada tabla: nombre real, columnas para cada campo logico,
+  # 'extras' (columnas que pasan directo del Excel; tipo texto, numero,
+  # booleano o busqueda por nombre en otra tabla) y 'fijos' (columnas con
+  # un valor SQL constante).
+  ciudad:
+    tabla: ciudades
+    columnas: {id: id, nombre: nombre}
+    catalogo_csv: data/ciudades.csv
+
+  tipo_contrato:
+    tabla: tipos_servicio
+    columnas: {nombre: nombre, identificador: codigo}
+    extras:
+      - {excel: penalidad, columna: penalidad, tipo: numero}
+      - {excel: meses_permanencia, columna: meses_permanencia, tipo: numero}
+
+  categoria:
+    tabla: categorias_producto
+    columnas: {nombre: nombre, descripcion: descripcion, activo: activo}
+
+  producto:
+    tabla: productos
+    columnas:
+      nombre: nombre
+      referencia: referencia
+      activo: activo
+      tiene_seriales: maneja_seriales
+      se_puede_vender: se_vende
+      se_puede_comprar: se_compra
+      precio_venta: precio
+      categoria: categoria_id
+      es_principal: es_principal
+    extras:
+      - {excel: unidad, columna: unidad, tipo: texto}
+      - {excel: velocidad_mbps, columna: velocidad_mbps, tipo: numero}
+
+  consecutivo:
+    tabla: consecutivos
+    columnas:
+      nombre: nombre
+      prefijo: prefijo
+      sufijo: sufijo
+      numero_inicial: numero_inicial
+      numero_actual: numero_actual
+      numero_de_digitos: digitos
+      activo: activo
+      tipo_documento: tipo_documento_id
+    fijos:
+      organizacion_id: "1"
+
+  proyecto:
+    tabla: sedes
+    columnas: {nombre: nombre, ciudad: ciudad_id, consecutivo: consecutivo_id}
+
+  persona:
+    tabla: personas
+    columnas:
+      tipo_identificacion: tipo_identificacion_id
+      numero_documento: documento
+      nombres: nombres
+      apellidos: apellidos
+      email: email
+
+  cliente:
+    tabla: clientes
+    columnas: {id: id, persona: persona_id}       # 'id' presente = comparte el id de la persona
+
+  empleado:
+    tabla: empleados
+    columnas: {id: id, persona: persona_id, activo: activo, almacen: almacen_id, almacen_generado: almacen_generado}
+
+  almacen:
+    tabla: almacenes
+    sufijo: "_01"
+    columnas: {nombre: nombre, nombre_corto: nombre_corto}
+    fijos:
+      organizacion_id: "1"
+
+  ubicacion:
+    tabla: ubicaciones
+    columnas: {almacen: almacen_id, nombre: nombre, tipo: tipo_ubicacion_id, disponible_venta: disponible_venta}
+    filas:
+      - {nombre: "Existencias", tipo: 1, disponible_venta: true}
+      - {nombre: "Devoluciones", tipo: 2, disponible_venta: false}
+
+  contrato:
+    tabla: contratos
+    columnas:
+      cliente: cliente_id
+      proyecto: sede_id
+      tipo_contrato: tipo_servicio_id
+      codigo_servicio: codigo_servicio
+      consecutivo: numero_contrato
+      factura_electronica: factura_electronica
+      latitud: latitud
+      longitud: longitud
+
+  instalacion:
+    tabla: contratos_instalacion
+    columnas: {contrato: contrato_id}
+    extras:
+      - {excel: ip_fija, columna: ip_fija, tipo: texto}
+      - {excel: nodo, columna: nodo_id, tipo: busqueda, tabla_busqueda: nodos, campo_busqueda: nombre}
+
+  detalle_contrato:
+    tabla: contratos_detalle
+    columnas:
+      contrato: contrato_id
+      producto: producto_id
+      precio_venta: precio
+      cantidad: cantidad
+      cargo_unico: cargo_unico
